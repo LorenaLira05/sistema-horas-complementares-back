@@ -1,17 +1,31 @@
 const express = require('express');
-const cors = require('cors'); 
+const cors = require('cors');
 require('dotenv').config();
-const port = 3000;
+
 const app = express();
 
-app.use(express.json());
+
 app.use(cors());
+app.use(express.json()); 
 
 
-app.get('/status', (req, res) => {
-    res.json({ mensagem: "API Online" });
+const rotasAdmin = require('./routes/admin');
+const rotasCoordenador = require('./routes/coordenador');
+const rotasAluno = require('./routes/aluno');
+const rotasAuth = require('./routes/authRoutes');
+
+app.use('/admin', rotasAdmin);
+app.use('/coordenador', rotasCoordenador);
+app.use('/aluno', rotasAluno);
+app.use('/auth', rotasAuth);
+
+
+app.get('/', (req, res) => {
+    res.send(' Servidor de Atividades Complementares Online!');
 });
 
-app.listen(3000, () => {
-    console.log("Servidor pronto!");
+const PORT = process.env.PORT || 3001;
+
+app.listen(PORT, () => {
+    console.log(`Server rodando na porta ${PORT}`);
 });
