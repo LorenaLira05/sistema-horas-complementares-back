@@ -4,7 +4,9 @@ const coordenadorController = require('../controllers/coordenadorController');
 const authMiddleware = require('../middleware/auth');
 
 router.get('/teste', (req, res) => res.json({ msg: "Rota Coordenador funcionando!" }));
+
 router.post('/regras', authMiddleware(['COORDENADOR']), coordenadorController.postCriarRegra);
+
 router.get('/regras/:curso_id', authMiddleware(['COORDENADOR', 'ALUNO']), coordenadorController.getRegrasPorCurso);
 // cadastrar Aluno
 router.post('/aluno', authMiddleware(['COORDENADOR']), coordenadorController.postCadastrarAluno);

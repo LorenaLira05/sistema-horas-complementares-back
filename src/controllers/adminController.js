@@ -19,7 +19,6 @@ exports.getListaCursos = async (req, res) => {
         
         res.status(200).json(resultado.rows);
     } catch (err) {
-      
         res.status(500).json({ erro: "Erro ao buscar cursos: " + err.message });
     }
 };

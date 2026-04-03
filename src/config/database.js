@@ -10,7 +10,7 @@ const pool = new Pool({
 });
 
 pool.on('connect', () => {
-  console.log('✅ Conectado ao banco de dados!');
+  console.log('Conectado ao banco de dados!');
 });
 
 module.exports = pool;
