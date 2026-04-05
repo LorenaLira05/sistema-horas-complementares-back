@@ -1,13 +1,14 @@
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
+const path = require('path');
 
 const app = express();
 
 
 app.use(cors());
 app.use(express.json()); 
-
+app.use(express.static(path.join(__dirname, '..', 'frontend')));
 
 const rotasAdmin = require('./routes/admin');
 const rotasCoordenador = require('./routes/coordenador');
@@ -21,7 +22,7 @@ app.use('/auth', rotasAuth);
 
 
 app.get('/', (req, res) => {
-    res.send(' Servidor de Atividades Complementares Online!');
+    res.sendFile(path.join(__dirname, '..', 'frontend', 'index.html'));
 });
 
 const PORT = process.env.PORT || 3001;

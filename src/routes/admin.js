@@ -7,5 +7,6 @@ const adminController = require('../controllers/adminController');
 router.get('/cursos', authMiddleware(['SUPER_ADMIN']), adminController.getListaCursos);
 router.post('/coordenador', authMiddleware(['SUPER_ADMIN']), adminController.postCadastrarCoordenador);
 router.post('/curso', authMiddleware(['SUPER_ADMIN']), adminController.postCriarCurso);
+router.get('/coordenadores', authMiddleware(['SUPER_ADMIN']), adminController.getListaCoordenadores);
 
 module.exports = router;
