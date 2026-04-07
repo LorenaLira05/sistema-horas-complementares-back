@@ -1,5 +1,7 @@
 const express = require('express');
 const router = express.Router();
+const authMiddleware = require('../middleware/auth');
+const alunoController = require('../controllers/alunoController');
 
 router.get('/teste', (req, res) => res.json({ msg: "Rota Aluno funcionando!" }));
 
