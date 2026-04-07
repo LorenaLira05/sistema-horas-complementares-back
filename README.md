@@ -77,7 +77,7 @@ sistema-horas-complementares/
 
 ### 1. Clonar o repositório
 ```bash
-git clone https://github.com/seu-usuario/sistema-horas-complementares.git
+git clone https://github.com/LorenaLira05/sistema-horas-complementares.git
 cd sistema-horas-complementares
 ```
 
