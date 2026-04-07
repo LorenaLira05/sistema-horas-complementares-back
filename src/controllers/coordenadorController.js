@@ -116,7 +116,8 @@ exports.getSubmissoesPendentes = async (req, res) => {
 
 exports.patchValidarSubmissao = async (req, res) => {
     const { id } = req.params;
-    const { status_final } = req.body;
+    const { status_final, feedback, horas_aprovadas } = req.body;
+    const coordenador_id = req.usuario.id;
 
     if (!['APROVADO', 'REJEITADO'].includes(status_final)) {
         return res.status(400).json({ 
@@ -127,10 +128,21 @@ exports.patchValidarSubmissao = async (req, res) => {
     try {
         const query = `
             UPDATE atividades_enviadas 
-            SET status = $1 
-            WHERE id = $2 
+            SET status = $1,
+                feedback = $2,
+                horas_aprovadas = $3,
+                coordenador_id = $4,
+                data_validacao = NOW()
+            WHERE id = $5 
             RETURNING *`;
-        const resultado = await pool.query(query, [status_final, id]);
+        
+        const resultado = await pool.query(query, [
+            status_final, 
+            feedback, 
+            horas_aprovadas, 
+            coordenador_id, 
+            id
+        ]);
 
         if (resultado.rows.length === 0) {
             return res.status(404).json({ erro: "Submissão não encontrada." });
@@ -143,4 +155,4 @@ exports.patchValidarSubmissao = async (req, res) => {
     } catch (err) {
         res.status(500).json({ erro: err.message });
     }
-}; 
+};
