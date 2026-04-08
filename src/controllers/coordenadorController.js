@@ -91,28 +91,111 @@ exports.getAlunosDoCurso = async (req, res) => {
 };
 
 
-exports.getSubmissoesPendentes = async (req, res) => {
+exports.getSubmissoes = async (req, res) => {
     const { curso_id } = req.params;
+    const { status, pagina = 1 } = req.query;
+    const itensPorPagina = 10;
+    const offset = (pagina - 1) * itensPorPagina;
 
+    // Verifica se o coordenador pertence ao curso
     if (req.usuario.curso_id != curso_id) {
-        return res.status(403).json({ 
-            erro: "Você não tem acesso a este curso." 
+        return res.status(403).json({
+            erro: "Você não tem acesso a este curso."
         });
     }
 
     try {
+        // Monta o filtro de status dinamicamente
+        let filtroStatus = '';
+        let params = [curso_id];
+
+        if (status && status !== 'TODAS') {
+            filtroStatus = `AND a.status = $2`;
+            params.push(status);
+            params.push(itensPorPagina);
+            params.push(offset);
+        } else {
+            params.push(itensPorPagina);
+            params.push(offset);
+        }
+
+        // Busca as submissões com paginação
         const query = `
-            SELECT a.*, u.nome as nome_aluno 
+            SELECT 
+                a.*,
+                u.nome as nome_aluno,
+                u.matricula,
+                c.nome_curso,
+                r.nome_categoria as categoria
             FROM atividades_enviadas a
             JOIN usuarios u ON a.aluno_id = u.id
-            WHERE u.curso_id = $1 AND a.status = 'PENDENTE'`;
-        const resultado = await pool.query(query, [curso_id]);
-        res.status(200).json(resultado.rows);
+            JOIN cursos c ON c.id = $1
+            LEFT JOIN regras_atividades r ON a.regra_id = r.id
+            WHERE u.curso_id = $1
+            ${filtroStatus}
+            ORDER BY a.data_envio DESC
+            LIMIT $${params.length - 1} OFFSET $${params.length}`;
+
+        const resultado = await pool.query(query, params);
+
+        // Conta totais por status
+        const contadores = await pool.query(`
+            SELECT
+                COUNT(*) FILTER (WHERE status = 'PENDENTE') as pendentes,
+                COUNT(*) FILTER (WHERE status = 'APROVADO') as aprovadas,
+                COUNT(*) FILTER (WHERE status = 'REJEITADO') as reprovadas,
+                COUNT(*) as total
+            FROM atividades_enviadas a
+            JOIN usuarios u ON a.aluno_id = u.id
+            WHERE u.curso_id = $1`,
+            [curso_id]
+        );
+
+        res.status(200).json({
+            submissoes: resultado.rows,
+            contadores: contadores.rows[0],
+            pagina: parseInt(pagina),
+            total_paginas: Math.ceil(contadores.rows[0].total / itensPorPagina)
+        });
+
     } catch (err) {
         res.status(500).json({ erro: err.message });
     }
 };
 
+// Buscar submissão por ID
+exports.getSubmissaoPorId = async (req, res) => {
+    const { id } = req.params;
+
+    try {
+        const resultado = await pool.query(`
+            SELECT 
+                a.*,
+                u.nome as nome_aluno,
+                u.email as email_aluno,
+                u.matricula,
+                c.nome_curso,
+                r.nome_categoria as categoria,
+                cert.caminho_arquivo,
+                cert.nome_arquivo
+            FROM atividades_enviadas a
+            JOIN usuarios u ON a.aluno_id = u.id
+            JOIN cursos c ON c.id = u.curso_id
+            LEFT JOIN regras_atividades r ON a.regra_id = r.id
+            LEFT JOIN certificados cert ON cert.atividade_id = a.id
+            WHERE a.id = $1`,
+            [id]
+        );
+
+        if (resultado.rows.length === 0) {
+            return res.status(404).json({ erro: "Submissão não encontrada." });
+        }
+
+        res.status(200).json(resultado.rows[0]);
+    } catch (err) {
+        res.status(500).json({ erro: err.message });
+    }
+};
 
 exports.patchValidarSubmissao = async (req, res) => {
     const { id } = req.params;

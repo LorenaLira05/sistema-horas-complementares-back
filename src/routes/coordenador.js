@@ -13,7 +13,8 @@ router.post('/aluno', authMiddleware(['COORDENADOR']), coordenadorController.pos
 router.get('/alunos/:curso_id', authMiddleware(['COORDENADOR']), coordenadorController.getAlunosDoCurso);
 router.put('/aluno/:id', authMiddleware(['COORDENADOR']), coordenadorController.putAtualizarAluno);         
 
-router.get('/submissoes/:curso_id', authMiddleware(['COORDENADOR']), coordenadorController.getSubmissoesPendentes);
+router.get('/submissoes/:curso_id', authMiddleware(['COORDENADOR']), coordenadorController.getSubmissoes);
+router.get('/submissao/:id', authMiddleware(['COORDENADOR']), coordenadorController.getSubmissaoPorId);
 
 router.patch('/validar/:id', authMiddleware(['COORDENADOR']), coordenadorController.patchValidarSubmissao);
 
