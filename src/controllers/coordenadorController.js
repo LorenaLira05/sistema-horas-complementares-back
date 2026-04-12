@@ -1,5 +1,6 @@
 const pool = require('../config/database');
 const bcrypt = require('bcryptjs');
+const registrarLog = require('../utils/logger');
 
 
 exports.postCriarRegra = async (req, res) => {
@@ -17,7 +18,7 @@ exports.postCriarRegra = async (req, res) => {
             VALUES ($1, $2, $3) RETURNING *`;
         
         const resultado = await pool.query(query, [curso_id, nome_categoria, limite_horas]);
-        
+        await registrarLog(req.usuario.id, req.usuario.perfil, 'CRIAR_REGRA', `Regra criada: ${nome_categoria}`, req.ip);
         res.status(201).json({
             mensagem: "Regra cadastrada com sucesso!",
             regra: resultado.rows[0]
@@ -65,6 +66,7 @@ exports.postCadastrarAluno = async (req, res) => {
             VALUES ($1, $2, $3, $4, 'ALUNO', $5) RETURNING id, nome, email`;
         
         const resultado = await pool.query(query, [nome, email, senhaCripto, matricula, curso_id]);
+        await registrarLog(req.usuario.id, req.usuario.perfil, 'CRIAR_ALUNO', `Aluno criado: ${resultado.rows[0].email}`, req.ip);
         res.status(201).json({ mensagem: "Aluno cadastrado!", aluno: resultado.rows[0] });
     } catch (err) {
         res.status(500).json({ erro: err.message });
@@ -230,7 +232,7 @@ exports.patchValidarSubmissao = async (req, res) => {
         if (resultado.rows.length === 0) {
             return res.status(404).json({ erro: "Submissão não encontrada." });
         }
-
+        await registrarLog(req.usuario.id, req.usuario.perfil, 'VALIDAR_SUBMISSAO', `Submissão id ${id} marcada como ${status_final}`, req.ip);
         res.status(200).json({ 
             mensagem: "Status atualizado!", 
             dados: resultado.rows[0] 
@@ -265,7 +267,7 @@ exports.putAtualizarRegra = async (req, res) => {
             RETURNING *`;
 
         const resultado = await pool.query(query, [nome_categoria, limite_horas, id]);
-
+        await registrarLog(req.usuario.id, req.usuario.perfil, 'ATUALIZAR_REGRA', `Regra atualizada: id ${id}`, req.ip);
         res.status(200).json({ mensagem: "Regra atualizada!", regra: resultado.rows[0] });
     } catch (err) {
         res.status(500).json({ erro: err.message });
@@ -298,7 +300,7 @@ exports.putAtualizarAluno = async (req, res) => {
             RETURNING id, nome, email, matricula`;
 
         const resultado = await pool.query(query, [nome, email, matricula, id]);
-
+        await registrarLog(req.usuario.id, req.usuario.perfil, 'ATUALIZAR_ALUNO', `Aluno atualizado: id ${id}`, req.ip);
         res.status(200).json({ mensagem: "Aluno atualizado!", aluno: resultado.rows[0] });
     } catch (err) {
         res.status(500).json({ erro: err.message });
@@ -318,6 +320,7 @@ exports.deleteAluno = async (req, res) => {
             return res.status(403).json({ erro: "Você não tem acesso a este aluno." });
         }
         await pool.query('DELETE FROM usuarios WHERE id = $1', [id]);
+        await registrarLog(req.usuario.id, req.usuario.perfil, 'DELETAR_ALUNO', `Aluno deletado: id ${id}`, req.ip);
         res.status(200).json({ mensagem: "Aluno deletado com sucesso!" });
     } catch (err) {
         res.status(500).json({ erro: err.message });
@@ -337,6 +340,7 @@ exports.deleteRegra = async (req, res) => {
             return res.status(403).json({ erro: "Você não tem acesso a esta regra." });
         }
         await pool.query('DELETE FROM regras_atividades WHERE id = $1', [id]);
+        await registrarLog(req.usuario.id, req.usuario.perfil, 'DELETAR_REGRA', `Regra deletada: id ${id}`, req.ip);
         res.status(200).json({ mensagem: "Regra deletada com sucesso!" });
     } catch (err) {
         res.status(500).json({ erro: err.message });

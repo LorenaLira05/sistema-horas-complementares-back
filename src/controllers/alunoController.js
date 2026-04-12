@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const registrarLog = require('../utils/logger');
 
 
 exports.postSubmeterAtividade = async (req, res) => {
@@ -32,7 +33,7 @@ exports.postSubmeterAtividade = async (req, res) => {
             regra.rows[0].nome_categoria,
             horas_solicitadas
         ]);
-
+        await registrarLog(aluno_id, req.usuario.perfil, 'SUBMETER_ATIVIDADE', `Atividade submetida: ${regra.rows[0].nome_categoria}`, req.ip);
         res.status(201).json({ mensagem: "Atividade submetida!", atividade: resultado.rows[0] });
     } catch (err) {
         res.status(500).json({ erro: err.message });
@@ -87,7 +88,7 @@ exports.putEditarSubmissao = async (req, res) => {
             RETURNING *`;
 
         const resultado = await pool.query(query, [descricao, horas_solicitadas, id, aluno_id]);
-
+        await registrarLog(aluno_id, req.usuario.perfil, 'EDITAR_SUBMISSAO', `Submissão editada: id ${id}`, req.ip);
         res.status(200).json({ mensagem: "Submissão atualizada!", atividade: resultado.rows[0] });
     } catch (err) {
         res.status(500).json({ erro: err.message });
@@ -109,6 +110,7 @@ exports.deleteSubmissao = async (req, res) => {
             return res.status(400).json({ erro: "Você só pode deletar submissões pendentes." });
         }
         await pool.query('DELETE FROM atividades_enviadas WHERE id = $1', [id]);
+        await registrarLog(aluno_id, req.usuario.perfil, 'DELETAR_SUBMISSAO', `Submissão deletada: id ${id}`, req.ip);
         res.status(200).json({ mensagem: "Submissão deletada com sucesso!" });
     } catch (err) {
         res.status(500).json({ erro: err.message });

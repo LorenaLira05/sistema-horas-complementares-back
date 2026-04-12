@@ -1,5 +1,6 @@
 const pool = require('../config/database');
 const bcrypt = require('bcryptjs');
+const registrarLog = require('../utils/logger');
 
 exports.postCriarCurso = async (req, res) => {
     const { nome_curso, sigla, carga_horaria, duracao } = req.body;
@@ -7,6 +8,7 @@ exports.postCriarCurso = async (req, res) => {
         const query = `INSERT INTO cursos (nome_curso, sigla, carga_horaria, duracao) 
                        VALUES ($1, $2, $3, $4) RETURNING *`;
         const resultado = await pool.query(query, [nome_curso, sigla, carga_horaria, duracao]);
+        await registrarLog(req.usuario.id, req.usuario.perfil, 'CRIAR_CURSO', `Curso criado: ${nome_curso}`, req.ip);
         res.status(201).json({ mensagem: "Curso criado!", curso: resultado.rows[0] });
     } catch (err) {
         res.status(500).json({ erro: err.message });
@@ -50,7 +52,7 @@ exports.postCadastrarCoordenador = async (req, res) => {
             RETURNING id, nome, email`;
         
         const resultado = await pool.query(query, [nome, email, senhaCripto, curso_id]);
-        
+        await registrarLog(req.usuario.id, req.usuario.perfil, 'CRIAR_COORDENADOR', `Coordenador criado: ${resultado.rows[0].email}`, req.ip);
         res.status(201).json({
             mensagem: "Coordenador cadastrado com sucesso!",
             dados: resultado.rows[0]
@@ -77,7 +79,7 @@ exports.putAtualizarCurso = async (req, res) => {
         if (resultado.rows.length === 0) {
             return res.status(404).json({ erro: "Curso não encontrado." });
         }
-
+        await registrarLog(req.usuario.id, req.usuario.perfil, 'ATUALIZAR_CURSO', `Curso atualizado: id ${id}`, req.ip);
         res.status(200).json({ mensagem: "Curso atualizado!", curso: resultado.rows[0] });
     } catch (err) {
         res.status(500).json({ erro: err.message });
@@ -101,7 +103,7 @@ exports.putAtualizarCoordenador = async (req, res) => {
         if (resultado.rows.length === 0) {
             return res.status(404).json({ erro: "Coordenador não encontrado." });
         }
-
+        await registrarLog(req.usuario.id, req.usuario.perfil, 'ATUALIZAR_COORDENADOR', `Coordenador atualizado: id ${id}`, req.ip);
         res.status(200).json({ mensagem: "Coordenador atualizado!", dados: resultado.rows[0] });
     } catch (err) {
         res.status(500).json({ erro: err.message });
@@ -117,6 +119,7 @@ exports.deleteCurso = async (req, res) => {
         if (resultado.rows.length === 0) {
             return res.status(404).json({ erro: "Curso não encontrado." });
         }
+        await registrarLog(req.usuario.id, req.usuario.perfil, 'DELETAR_CURSO', `Curso deletado: id ${id}`, req.ip);
         res.status(200).json({ mensagem: "Curso deletado com sucesso!" });
     } catch (err) {
         res.status(500).json({ erro: err.message });
@@ -132,6 +135,7 @@ exports.deleteCoordenador = async (req, res) => {
         if (resultado.rows.length === 0) {
             return res.status(404).json({ erro: "Coordenador não encontrado." });
         }
+        await registrarLog(req.usuario.id, req.usuario.perfil, 'DELETAR_COORDENADOR', `Coordenador deletado: id ${id}`, req.ip);
         res.status(200).json({ mensagem: "Coordenador deletado com sucesso!" });
     } catch (err) {
         res.status(500).json({ erro: err.message });
