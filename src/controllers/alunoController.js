@@ -33,27 +33,32 @@ exports.postSubmeterAtividade = async (req, res) => {
             regra.rows[0].nome_categoria,
             horas_solicitadas
         ]);
-        await registrarLog(aluno_id, req.usuario.perfil, 'SUBMETER_ATIVIDADE', `Atividade submetida: ${regra.rows[0].nome_categoria}`, req.ip);
-        res.status(201).json({ mensagem: "Atividade submetida!", atividade: resultado.rows[0] });
-    } catch (err) {
-        res.status(500).json({ erro: err.message });
+        // Busca o coordenador do curso para notificar
+    const coordenador = await pool.query(`
+        SELECT u.email, u.nome 
+        FROM usuarios u
+        JOIN coordenador_curso cc ON cc.coordenador_id = u.id
+        WHERE cc.curso_id = $1 
+        LIMIT 1`,
+        [curso_id]
+    );
+
+    // Busca o nome do aluno
+    const aluno = await pool.query(
+        'SELECT nome FROM usuarios WHERE id = $1',
+        [aluno_id]
+    );
+
+    // Envia o e-mail para o coordenador
+    if (coordenador.rows.length > 0) {
+        await emailNovaSubmissao(
+            coordenador.rows[0].email,
+            coordenador.rows[0].nome,
+            aluno.rows[0].nome,
+            descricao
+        );
     }
-};
-
-exports.getMinhasSubmissoes = async (req, res) => {
-    const aluno_id = req.usuario.id;
-
-    try {
-        const query = `
-            SELECT a.*, r.nome_categoria, r.limite_horas
-            FROM atividades_enviadas a
-            JOIN regras_atividades r ON a.regra_id = r.id
-            WHERE a.aluno_id = $1
-            ORDER BY a.data_envio DESC`;
-
-        const resultado = await pool.query(query, [aluno_id]);
-
-        res.status(200).json(resultado.rows);
+        res.status(201).json({ mensagem: "Atividade submetida!", atividade: resultado.rows[0] });
     } catch (err) {
         res.status(500).json({ erro: err.message });
     }
