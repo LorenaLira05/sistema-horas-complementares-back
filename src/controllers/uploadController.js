@@ -85,3 +85,5 @@ exports.getCertificado = async (req, res) => {
         res.status(500).json({ erro: err.message });
     }
 };
+
+module.exports.upload = upload;

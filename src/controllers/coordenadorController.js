@@ -1,7 +1,7 @@
 const pool = require('../config/database');
 const bcrypt = require('bcryptjs');
 const registrarLog = require('../utils/logger');
-
+const { emailResultadoSubmissao } = require('../services/emailService');
 
 exports.postCriarRegra = async (req, res) => {
     const { curso_id, nome_categoria, limite_horas } = req.body;
@@ -232,6 +232,22 @@ exports.patchValidarSubmissao = async (req, res) => {
         if (resultado.rows.length === 0) {
             return res.status(404).json({ erro: "Submissão não encontrada." });
         }
+        // Busca os dados do aluno para enviar o e-mail
+    const aluno = await pool.query(
+    'SELECT nome, email FROM usuarios WHERE id = $1',
+    [resultado.rows[0].aluno_id]
+    );
+
+    // Envia e-mail para o aluno com o resultado
+    if (aluno.rows.length > 0) {
+    await emailResultadoSubmissao(
+        aluno.rows[0].email,
+        aluno.rows[0].nome,
+        status_final,
+        resultado.rows[0].descricao,
+        feedback
+    );
+    }
         await registrarLog(req.usuario.id, req.usuario.perfil, 'VALIDAR_SUBMISSAO', `Submissão id ${id} marcada como ${status_final}`, req.ip);
         res.status(200).json({ 
             mensagem: "Status atualizado!", 

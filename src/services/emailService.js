@@ -13,6 +13,7 @@ const transporter = nodemailer.createTransport({
 // E-mail para coordenador quando receber nova submissão
 exports.emailNovaSubmissao = async (emailCoordenador, nomeCoordenador, nomeAluno, descricao) => {
     try {
+        console.log("Enviando email para:", emailCoordenador);
         await transporter.sendMail({
             from: `"Sistema SENAC" <${process.env.MAIL_USER}>`,
             to: emailCoordenador,
@@ -27,15 +28,15 @@ exports.emailNovaSubmissao = async (emailCoordenador, nomeCoordenador, nomeAluno
                 <p>Sistema de Gestão de Atividades Complementares — SENAC</p>
             `
         });
-        console.log(`✅ E-mail enviado para ${emailCoordenador}`);
+        console.log(`E-mail enviado para ${emailCoordenador}`);
     } catch (err) {
-        console.error('❌ Erro ao enviar e-mail:', err.message);
+        console.error('Erro ao enviar e-mail:', err.message);
     }
 };
 
 // E-mail para aluno após aprovação ou reprovação
 exports.emailResultadoSubmissao = async (emailAluno, nomeAluno, status, descricao, feedback) => {
-    const statusTexto = status === 'APROVADO' ? '✅ Aprovada' : '❌ Reprovada';
+    const statusTexto = status === 'APROVADO' ? 'Aprovada' : 'Reprovada';
     const corStatus = status === 'APROVADO' ? '#10b981' : '#ef4444';
 
     try {

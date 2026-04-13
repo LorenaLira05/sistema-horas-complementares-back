@@ -1,11 +1,13 @@
 const pool = require('../config/database');
 const registrarLog = require('../utils/logger');
-
+const { emailNovaSubmissao } = require('../services/emailService');
 
 exports.postSubmeterAtividade = async (req, res) => {
     const { regra_id, descricao, horas_solicitadas } = req.body;
     const aluno_id = req.usuario.id;
     const curso_id = req.usuario.curso_id;
+    const arquivo = req.file;
+    const caminho_arquivo = req.file ? `/uploads/${req.file.filename}` : null;
 
     try {
         // Verifica se a regra pertence ao curso do aluno
@@ -19,31 +21,32 @@ exports.postSubmeterAtividade = async (req, res) => {
         }
 
         const query = `
-            INSERT INTO atividades_enviadas 
-                (aluno_id, regra_id, curso_id, descricao, categoria, horas_solicitadas, status)
-            VALUES 
-                ($1, $2, $3, $4, $5, $6, 'PENDENTE')
-            RETURNING *`;
+        INSERT INTO atividades_enviadas 
+        (aluno_id, regra_id, curso_id, descricao, categoria, horas_solicitadas, status, caminho_arquivo)
+        VALUES 
+        ($1, $2, $3, $4, $5, $6, 'PENDENTE', $7)
+        RETURNING *`;
 
         const resultado = await pool.query(query, [
-            aluno_id,
-            regra_id,
-            curso_id,
-            descricao,
-            regra.rows[0].nome_categoria,
-            horas_solicitadas
-        ]);
+        aluno_id,
+        regra_id,
+        curso_id,
+        descricao,
+        regra.rows[0].nome_categoria,
+        horas_solicitadas,
+        caminho_arquivo
+]);
         // Busca o coordenador do curso para notificar
-    const coordenador = await pool.query(`
-        SELECT u.email, u.nome 
-        FROM usuarios u
-        JOIN coordenador_curso cc ON cc.coordenador_id = u.id
-        WHERE cc.curso_id = $1 
-        LIMIT 1`,
-        [curso_id]
-    );
+    const coordenador = await pool.query(
+    `SELECT nome, email 
+     FROM usuarios 
+     WHERE curso_id = $1 
+     AND perfil = 'COORDENADOR'
+     LIMIT 1`,
+    [curso_id]
+);
+    console.log(" Coordenador encontrado:", coordenador.rows);
 
-    // Busca o nome do aluno
     const aluno = await pool.query(
         'SELECT nome FROM usuarios WHERE id = $1',
         [aluno_id]
@@ -51,6 +54,7 @@ exports.postSubmeterAtividade = async (req, res) => {
 
     // Envia o e-mail para o coordenador
     if (coordenador.rows.length > 0) {
+        console.log("Vai tentar enviar email...");
         await emailNovaSubmissao(
             coordenador.rows[0].email,
             coordenador.rows[0].nome,
@@ -117,6 +121,21 @@ exports.deleteSubmissao = async (req, res) => {
         await pool.query('DELETE FROM atividades_enviadas WHERE id = $1', [id]);
         await registrarLog(aluno_id, req.usuario.perfil, 'DELETAR_SUBMISSAO', `Submissão deletada: id ${id}`, req.ip);
         res.status(200).json({ mensagem: "Submissão deletada com sucesso!" });
+    } catch (err) {
+        res.status(500).json({ erro: err.message });
+    }
+};
+
+exports.getMinhasSubmissoes = async (req, res) => {
+    const aluno_id = req.usuario.id;
+
+    try {
+        const resultado = await pool.query(
+            'SELECT * FROM atividades_enviadas WHERE aluno_id = $1',
+            [aluno_id]
+        );
+
+        res.status(200).json(resultado.rows);
     } catch (err) {
         res.status(500).json({ erro: err.message });
     }
