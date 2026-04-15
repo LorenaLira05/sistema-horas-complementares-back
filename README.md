@@ -165,6 +165,16 @@ CREATE TABLE coordenador_curso (
     curso_id INTEGER REFERENCES cursos(id),
     PRIMARY KEY (coordenador_id, curso_id)
 );
+
+CREATE TABLE logs (
+    id SERIAL PRIMARY KEY,
+    usuario_id INTEGER REFERENCES usuarios(id),
+    perfil VARCHAR(50),
+    acao VARCHAR(100),
+    detalhes TEXT,
+    ip VARCHAR(50),
+    criado_em TIMESTAMP DEFAULT NOW()
+);
 ```
 
 ### 6. Criar o primeiro Super Admin
@@ -222,17 +232,15 @@ Acesse: **http://localhost:3001**
 - [x] Regras de atividades por curso
 - [x] Validação e reprovação de submissões
 - [x] Segurança — coordenador acessa apenas seu próprio curso
+- [x] Dashboard de métricas
+- [x] Upload de certificados
+- [x] E-mails automáticos
+- [x] Filtros e paginação nas submissões
+- [x] Logs e rastreabilidade
 
 ## Em Desenvolvimento
-
 - [ ] Frontend conectado ao backend
-- [ ] Dashboard de métricas
-- [ ] Upload de certificados 
 - [ ] OCR para leitura de certificados 
-- [ ] E-mails automáticos 
-- [ ] Logs e rastreabilidade 
-- [ ] Filtros e paginação nas submissões
-
 ---
 
 ## Licença
