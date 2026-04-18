@@ -6,7 +6,6 @@ exports.login = async (req, res) => {
     const { email, senha } = req.body;
 
     try {
-        // Busca usuário com seus papéis
         const resultado = await pool.query(
             `SELECT u.*, array_agg(r.name) AS roles
              FROM users u
@@ -30,7 +29,6 @@ exports.login = async (req, res) => {
 
         const primeiroAcesso = usuario.last_login_at === null;
 
-        // Atualiza last_login_at
         await pool.query(
             `UPDATE users SET last_login_at = NOW() WHERE id = $1`,
             [usuario.id]
@@ -40,7 +38,7 @@ exports.login = async (req, res) => {
             {
                 id: usuario.id,
                 email: usuario.email,
-                perfis: usuario.roles, // array ex: ['student'], ['coordinator'], ['super_admin']
+                perfis: usuario.roles, // array: ['student'], ['coordinator'], ['super_admin']
             },
             process.env.JWT_SECRET,
             { expiresIn: '8h' }
@@ -76,7 +74,6 @@ exports.setup = async (req, res) => {
 
         const senhaCripto = await bcrypt.hash(senha, 10);
 
-        // Cria o usuário
         const novoUsuario = await pool.query(
             `INSERT INTO users (full_name, email, password_hash)
              VALUES ($1, $2, $3)
@@ -86,12 +83,10 @@ exports.setup = async (req, res) => {
 
         const userId = novoUsuario.rows[0].id;
 
-        // Busca o role_id de super_admin
         const role = await pool.query(
             `SELECT id FROM roles WHERE name = 'super_admin'`
         );
 
-        // Vincula o papel
         await pool.query(
             `INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)`,
             [userId, role.rows[0].id]

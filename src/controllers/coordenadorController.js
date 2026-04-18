@@ -3,8 +3,6 @@ const bcrypt = require('bcryptjs');
 const registrarLog = require('../utils/logger');
 const { emailResultadoSubmissao } = require('../services/emailService');
 
-// ─── CATEGORIAS ────────────────────────────────────────────────────────────
-
 exports.postCriarCategoria = async (req, res) => {
     const { name, description } = req.body;
 
@@ -22,8 +20,6 @@ exports.postCriarCategoria = async (req, res) => {
         res.status(500).json({ erro: err.message });
     }
 };
-
-// ─── REGRAS ────────────────────────────────────────────────────────────────
 
 exports.postCriarRegra = async (req, res) => {
     const { course_id, category_id, min_hours, max_hours, is_required, notes } = req.body;
@@ -115,16 +111,13 @@ exports.deleteRegra = async (req, res) => {
     }
 };
 
-// ─── ALUNOS ────────────────────────────────────────────────────────────────
-
 exports.postCadastrarAluno = async (req, res) => {
-    const { full_name, email, cpf, phone, course_id } = req.body;
+    const { full_name, email, cpf, phone, course_id, ra, status_matricula } = req.body;
 
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
 
-        // Cria o usuário
         const senhaCripto = await bcrypt.hash('123456', 10);
         const novoUsuario = await client.query(
             `INSERT INTO users (full_name, email, password_hash, cpf, phone)
@@ -134,21 +127,25 @@ exports.postCadastrarAluno = async (req, res) => {
         );
         const userId = novoUsuario.rows[0].id;
 
-        // Vincula papel de student
         const role = await client.query(`SELECT id FROM roles WHERE name = 'student'`);
         await client.query(
             `INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)`,
             [userId, role.rows[0].id]
         );
 
-        // Vincula ao curso
         await client.query(
-            `INSERT INTO user_courses (user_id, course_id) VALUES ($1, $2)`,
-            [userId, course_id]
+            `INSERT INTO student_profiles (user_id, ra) VALUES ($1, $2)`,
+            [userId, ra]
+        );
+
+        await client.query(
+            `INSERT INTO user_courses (user_id, course_id, status_matricula)
+             VALUES ($1, $2, $3)`,
+            [userId, course_id, status_matricula || 'ativo']
         );
 
         await client.query('COMMIT');
-        await registrarLog(req.usuario.id, 'CRIAR_ALUNO', 'users', userId, { full_name, email, course_id });
+        await registrarLog(req.usuario.id, 'CRIAR_ALUNO', 'users', userId, { full_name, email, course_id, ra });
         res.status(201).json({ mensagem: "Aluno cadastrado com sucesso!", aluno: novoUsuario.rows[0] });
     } catch (err) {
         await client.query('ROLLBACK');
@@ -163,11 +160,15 @@ exports.getAlunosDoCurso = async (req, res) => {
 
     try {
         const resultado = await pool.query(
-            `SELECT u.id, u.full_name, u.email, u.phone, u.status, uc.enrollment_date
+            `SELECT
+                u.id, u.full_name, u.email, u.phone, u.status,
+                sp.ra,
+                uc.enrollment_date, uc.status_matricula
              FROM users u
              JOIN user_courses uc ON uc.user_id = u.id
              JOIN user_roles ur ON ur.user_id = u.id
              JOIN roles r ON r.id = ur.role_id
+             LEFT JOIN student_profiles sp ON sp.user_id = u.id
              WHERE uc.course_id = $1 AND r.name = 'student' AND uc.is_active = true`,
             [course_id]
         );
@@ -179,26 +180,47 @@ exports.getAlunosDoCurso = async (req, res) => {
 
 exports.putAtualizarAluno = async (req, res) => {
     const { id } = req.params;
-    const { full_name, email, phone } = req.body;
+    const { full_name, email, phone, ra, status_matricula, course_id } = req.body;
 
+    const client = await pool.connect();
     try {
-        const aluno = await pool.query(`SELECT * FROM users WHERE id = $1`, [id]);
+        await client.query('BEGIN');
+
+        const aluno = await client.query(`SELECT * FROM users WHERE id = $1`, [id]);
         if (aluno.rows.length === 0) {
+            await client.query('ROLLBACK');
             return res.status(404).json({ erro: "Aluno não encontrado." });
         }
 
-        const resultado = await pool.query(
-            `UPDATE users
-             SET full_name = $1, email = $2, phone = $3, updated_at = NOW()
-             WHERE id = $4
-             RETURNING id, full_name, email, phone`,
+        await client.query(
+            `UPDATE users SET full_name = $1, email = $2, phone = $3, updated_at = NOW()
+             WHERE id = $4`,
             [full_name, email, phone, id]
         );
 
-        await registrarLog(req.usuario.id, 'ATUALIZAR_ALUNO', 'users', id, { full_name, email });
-        res.status(200).json({ mensagem: "Aluno atualizado!", aluno: resultado.rows[0] });
+        await client.query(
+            `INSERT INTO student_profiles (user_id, ra, updated_at)
+             VALUES ($1, $2, NOW())
+             ON CONFLICT (user_id) DO UPDATE SET ra = $2, updated_at = NOW()`,
+            [id, ra]
+        );
+
+        if (status_matricula && course_id) {
+            await client.query(
+                `UPDATE user_courses SET status_matricula = $1
+                 WHERE user_id = $2 AND course_id = $3`,
+                [status_matricula, id, course_id]
+            );
+        }
+
+        await client.query('COMMIT');
+        await registrarLog(req.usuario.id, 'ATUALIZAR_ALUNO', 'users', id, { full_name, email, ra });
+        res.status(200).json({ mensagem: "Aluno atualizado!" });
     } catch (err) {
+        await client.query('ROLLBACK');
         res.status(500).json({ erro: err.message });
+    } finally {
+        client.release();
     }
 };
 
@@ -220,7 +242,6 @@ exports.deleteAluno = async (req, res) => {
     }
 };
 
-// ─── SUBMISSÕES ────────────────────────────────────────────────────────────
 
 exports.getSubmissoes = async (req, res) => {
     const { course_id } = req.params;
@@ -342,7 +363,6 @@ exports.patchValidarSubmissao = async (req, res) => {
 
         const previousStatus = submissaoAtual.rows[0].status;
 
-        // Atualiza a submissão
         const submissao = await client.query(
             `UPDATE submissions
              SET status = $1::submission_status_enum,
@@ -353,7 +373,6 @@ exports.patchValidarSubmissao = async (req, res) => {
             [status_final, approved_hours, id]
         );
 
-        // Registra na tabela de validações (histórico)
         await client.query(
             `INSERT INTO validations (submission_id, validator_user_id, validation_status, previous_status, comment, approved_hours)
              VALUES ($1, $2, $3::validation_status_enum, $4::submission_status_enum, $5, $6)`,
@@ -362,7 +381,6 @@ exports.patchValidarSubmissao = async (req, res) => {
 
         await client.query('COMMIT');
 
-        // Busca dados do aluno para notificação
         const aluno = await pool.query(
             `SELECT u.full_name, u.email
              FROM submissions s
@@ -381,7 +399,6 @@ exports.patchValidarSubmissao = async (req, res) => {
                 comment
             );
 
-            // Registra notificação no banco
             await pool.query(
                 `INSERT INTO notifications (user_id, submission_id, type, title, message)
                  VALUES (

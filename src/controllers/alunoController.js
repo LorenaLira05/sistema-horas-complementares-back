@@ -2,7 +2,6 @@ const pool = require('../config/database');
 const registrarLog = require('../utils/logger');
 const { emailNovaSubmissao } = require('../services/emailService');
 
-// ─── SUBMETER ATIVIDADE ────────────────────────────────────────────────────
 
 exports.postSubmeterAtividade = async (req, res) => {
     const {
@@ -126,8 +125,6 @@ exports.postSubmeterAtividade = async (req, res) => {
     }
 };
 
-// ─── EDITAR (somente se submitted ou returned_for_adjustment) ──────────────
-
 exports.putEditarSubmissao = async (req, res) => {
     const { id } = req.params;
     const { title, description, requested_hours, activity_date } = req.body;
@@ -173,8 +170,6 @@ exports.putEditarSubmissao = async (req, res) => {
     }
 };
 
-// ─── DELETAR (somente se submitted) ───────────────────────────────────────
-
 exports.deleteSubmissao = async (req, res) => {
     const { id } = req.params;
     const user_id = req.usuario.id;
@@ -198,7 +193,6 @@ exports.deleteSubmissao = async (req, res) => {
             });
         }
 
-        // ON DELETE CASCADE cuida de submission_files, validations e notifications
         await pool.query(`DELETE FROM submissions WHERE id = $1`, [id]);
 
         await registrarLog(req.usuario.id, 'DELETAR_SUBMISSAO', 'submissions', id, {});
@@ -208,8 +202,6 @@ exports.deleteSubmissao = async (req, res) => {
         res.status(500).json({ erro: err.message });
     }
 };
-
-// ─── LISTAR MINHAS SUBMISSÕES ──────────────────────────────────────────────
 
 exports.getMinhasSubmissoes = async (req, res) => {
     const user_id = req.usuario.id;

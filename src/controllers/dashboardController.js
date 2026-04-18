@@ -4,7 +4,6 @@ exports.getDashboardCoordenador = async (req, res) => {
     const user_id = req.usuario.id;
 
     try {
-        // Busca os cursos do coordenador
         const cursosDoCoordenador = await pool.query(
             `SELECT course_id FROM course_coordinators
              WHERE user_id = $1 AND is_active = true`,
@@ -24,7 +23,6 @@ exports.getDashboardCoordenador = async (req, res) => {
             });
         }
 
-        // Métricas de submissões dos cursos do coordenador
         const metricas = await pool.query(
             `SELECT
                 COUNT(*) FILTER (WHERE s.status = 'submitted') AS pendentes,
@@ -37,7 +35,6 @@ exports.getDashboardCoordenador = async (req, res) => {
             [course_ids]
         );
 
-        // Total de alunos nos cursos do coordenador
         const alunos = await pool.query(
             `SELECT COUNT(DISTINCT uc.user_id) AS total_alunos
              FROM user_courses uc
@@ -49,10 +46,8 @@ exports.getDashboardCoordenador = async (req, res) => {
             [course_ids]
         );
 
-        // Total de cursos que o coordenador gerencia
         const totalCursos = course_ids.length;
 
-        // Submissões por categoria
         const porCategoria = await pool.query(
             `SELECT
                 cat.name AS categoria,
@@ -66,7 +61,6 @@ exports.getDashboardCoordenador = async (req, res) => {
             [course_ids]
         );
 
-        // Cursos com mais envios
         const cursosMaisEnvios = await pool.query(
             `SELECT
                 c.name AS nome_curso,
@@ -81,7 +75,6 @@ exports.getDashboardCoordenador = async (req, res) => {
             [course_ids]
         );
 
-        // Últimas atividades
         const ultimasAtividades = await pool.query(
             `SELECT
                 s.id,
