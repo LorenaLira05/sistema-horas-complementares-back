@@ -23,11 +23,46 @@ exports.postCriarCurso = async (req, res) => {
 exports.getListaCursos = async (req, res) => {
     try {
         const resultado = await pool.query(
-            `SELECT * FROM courses WHERE is_active = true ORDER BY name`
+            `SELECT
+                c.*,
+                u.id AS coordinator_id,
+                u.full_name AS coordinator_name,
+                u.email AS coordinator_email
+             FROM courses c
+             LEFT JOIN course_coordinators cc ON cc.course_id = c.id AND cc.is_active = true
+             LEFT JOIN users u ON u.id = cc.user_id
+             WHERE c.is_active = true
+             ORDER BY c.name`
         );
         res.status(200).json(resultado.rows);
     } catch (err) {
         res.status(500).json({ erro: "Erro ao buscar cursos: " + err.message });
+    }
+};
+
+exports.getCoordenadorPorCurso = async (req, res) => {
+    const { course_id } = req.params;
+
+    try {
+        const resultado = await pool.query(
+            `SELECT
+                u.id, u.full_name, u.email, u.phone, u.status,
+                cp.departamento, cp.cargo, cp.data_admissao,
+                cc.assigned_at
+             FROM course_coordinators cc
+             JOIN users u ON u.id = cc.user_id
+             LEFT JOIN coordinator_profiles cp ON cp.user_id = u.id
+             WHERE cc.course_id = $1 AND cc.is_active = true`,
+            [course_id]
+        );
+
+        if (resultado.rows.length === 0) {
+            return res.status(404).json({ erro: "Nenhum coordenador vinculado a este curso." });
+        }
+
+        res.status(200).json(resultado.rows[0]);
+    } catch (err) {
+        res.status(500).json({ erro: err.message });
     }
 };
 
@@ -78,6 +113,7 @@ exports.deleteCurso = async (req, res) => {
     }
 };
 
+
 exports.getListaCoordenadores = async (req, res) => {
     try {
         const resultado = await pool.query(
@@ -107,17 +143,6 @@ exports.postCadastrarCoordenador = async (req, res) => {
         departamento, cargo, data_nascimento, data_admissao, observacoes_internas
     } = req.body;
 
-     // Validações obrigatórias
-    if (!full_name || !email || !cpf) {
-        return res.status(400).json({ 
-            erro: "Campos obrigatórios: full_name, email, cpf." 
-        });
-    }
-    const cpfLimpo = cpf.replace(/\D/g, ''); // remove pontos e traços
-        if (cpfLimpo.length !== 11) {
-        return res.status(400).json({ erro: "CPF inválido." });
-    }
-    
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -143,11 +168,19 @@ exports.postCadastrarCoordenador = async (req, res) => {
              VALUES ($1, $2, $3, $4, $5, $6)`,
             [userId, departamento, cargo, data_nascimento, data_admissao, observacoes_internas]
         );
-        
+
         if (course_ids && course_ids.length > 0) {
             for (const course_id of course_ids) {
                 await client.query(
-                    `INSERT INTO course_coordinators (user_id, course_id) VALUES ($1, $2)`,
+                    `UPDATE course_coordinators SET is_active = false
+                     WHERE course_id = $1 AND is_active = true`,
+                    [course_id]
+                );
+
+                await client.query(
+                    `INSERT INTO course_coordinators (user_id, course_id)
+                     VALUES ($1, $2)
+                     ON CONFLICT (user_id, course_id) DO UPDATE SET is_active = true, assigned_at = NOW()`,
                     [userId, course_id]
                 );
             }
@@ -188,7 +221,6 @@ exports.putAtualizarCoordenador = async (req, res) => {
             return res.status(404).json({ erro: "Coordenador não encontrado." });
         }
 
-        // Atualiza users
         await client.query(
             `UPDATE users SET full_name = $1, email = $2, phone = $3, updated_at = NOW()
              WHERE id = $4`,
@@ -205,12 +237,20 @@ exports.putAtualizarCoordenador = async (req, res) => {
             [id, departamento, cargo, data_nascimento, data_admissao, observacoes_internas]
         );
 
+        // Atualiza vínculos com cursos — cada curso só pode ter 1 coordenador ativo
         if (course_ids && course_ids.length > 0) {
             await client.query(
                 `UPDATE course_coordinators SET is_active = false WHERE user_id = $1`,
                 [id]
             );
+
             for (const course_id of course_ids) {
+                await client.query(
+                    `UPDATE course_coordinators SET is_active = false
+                     WHERE course_id = $1 AND user_id != $2 AND is_active = true`,
+                    [course_id, id]
+                );
+
                 await client.query(
                     `INSERT INTO course_coordinators (user_id, course_id)
                      VALUES ($1, $2)
@@ -247,7 +287,6 @@ exports.deleteCoordenador = async (req, res) => {
             return res.status(404).json({ erro: "Coordenador não encontrado." });
         }
 
-        // ON DELETE CASCADE cuida de user_roles, course_coordinators e coordinator_profiles
         await pool.query(`DELETE FROM users WHERE id = $1`, [id]);
         await registrarLog(req.usuario.id, 'DELETAR_COORDENADOR', 'users', id, {});
         res.status(200).json({ mensagem: "Coordenador deletado com sucesso!" });
