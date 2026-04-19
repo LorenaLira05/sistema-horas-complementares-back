@@ -1,16 +1,27 @@
 const pool = require('../config/database');
 
 exports.getDashboardCoordenador = async (req, res) => {
-    const user_id = req.usuario.id;
+    
+    const user_id = parseInt(req.usuario.id);
+    const isSuperAdmin = req.usuario.perfis.includes('super_admin');
 
-    try {
+    let course_ids = [];
+
+    try{
+
+    if (isSuperAdmin) {
+        const todosCursos = await pool.query(
+            `SELECT id FROM courses WHERE is_active = true`
+        );
+        course_ids = todosCursos.rows.map(r => r.id);
+    } else {
         const cursosDoCoordenador = await pool.query(
             `SELECT course_id FROM course_coordinators
-             WHERE user_id = $1 AND is_active = true`,
+            WHERE user_id = $1 AND is_active = true`,
             [user_id]
         );
-
-        const course_ids = cursosDoCoordenador.rows.map(r => r.course_id);
+        course_ids = cursosDoCoordenador.rows.map(r => r.course_id);
+    }
 
         if (course_ids.length === 0) {
             return res.status(200).json({
