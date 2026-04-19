@@ -399,23 +399,23 @@ exports.patchValidarSubmissao = async (req, res) => {
                 comment
             );
 
-            await pool.query(
-                `INSERT INTO notifications (user_id, submission_id, type, title, message)
-                 VALUES (
-                    (SELECT user_id FROM user_courses WHERE id = $1),
-                    $2,
-                    $3::notification_type_enum,
-                    $4,
-                    $5
-                 )`,
-                [
-                    submissao.rows[0].user_course_id,
-                    id,
-                    `submission_${status_final}`,
-                    `Sua submissão foi ${status_final === 'approved' ? 'aprovada' : status_final === 'rejected' ? 'reprovada' : 'devolvida para ajuste'}`,
-                    comment || ''
-                ]
-            );
+         await pool.query(
+            `INSERT INTO notifications (user_id, submission_id, type, title, message)
+            VALUES (
+                (SELECT uc.user_id FROM submissions s JOIN user_courses uc ON uc.id = s.user_course_id WHERE s.id = $2),
+                $2,
+                $3::notification_type_enum,
+                $4,
+                $5
+            )`,
+            [
+                submissao.rows[0].user_course_id,
+                submissao.rows[0].id,
+                `submission_${status_final}`,
+                `Sua submissão foi ${status_final === 'approved' ? 'aprovada' : status_final === 'rejected' ? 'reprovada' : 'devolvida para ajuste'}`,
+                comment || ''
+            ]
+        );
         }
 
         await registrarLog(req.usuario.id, 'VALIDAR_SUBMISSAO', 'submissions', id, { status_final, approved_hours });

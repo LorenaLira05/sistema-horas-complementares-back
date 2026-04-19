@@ -20,7 +20,6 @@ exports.postSubmeterAtividade = async (req, res) => {
     const arquivo = req.file;
 
     try {
-        // 1️⃣ Busca o vínculo user_course do aluno nesse curso
         const userCourse = await pool.query(
             `SELECT id FROM user_courses
              WHERE user_id = $1 AND course_id = $2 AND is_active = true`,
@@ -34,8 +33,6 @@ exports.postSubmeterAtividade = async (req, res) => {
         }
 
         const user_course_id = userCourse.rows[0].id;
-
-        // 2️⃣ Verifica se a categoria é permitida para o curso
         const regra = await pool.query(
             `SELECT * FROM course_activity_rules
              WHERE course_id = $1 AND category_id = $2`,
@@ -48,7 +45,6 @@ exports.postSubmeterAtividade = async (req, res) => {
             });
         }
 
-        // 3️⃣ Cria a submissão
         const resultado = await pool.query(
             `INSERT INTO submissions
              (user_course_id, category_id, title, description,
@@ -71,7 +67,6 @@ exports.postSubmeterAtividade = async (req, res) => {
 
         const submissao = resultado.rows[0];
 
-        // 4️⃣ Salva arquivo se enviado
         if (arquivo) {
             await pool.query(
                 `INSERT INTO submission_files
@@ -88,24 +83,22 @@ exports.postSubmeterAtividade = async (req, res) => {
             );
         }
 
-        // 5️⃣ Notifica coordenadores do curso
         const coordenadores = await pool.query(
-            `SELECT u.email, u.full_name
-             FROM course_coordinators cc
-             JOIN users u ON u.id = cc.user_id
-             WHERE cc.course_id = $1 AND cc.is_active = true`,
+            `SELECT u.id, u.email, u.full_name
+            FROM course_coordinators cc
+            JOIN users u ON u.id = cc.user_id
+            WHERE cc.course_id = $1 AND cc.is_active = true`,
             [course_id]
-        );
+         );
 
         for (const coord of coordenadores.rows) {
             await emailNovaSubmissao(coord.email, title);
 
-            // Registra notificação no banco
-            await pool.query(
+           await pool.query(
                 `INSERT INTO notifications (user_id, submission_id, type, title, message)
-                 VALUES ($1, $2, 'submission_created', $3, $4)`,
+                VALUES ($1, $2, 'submission_created', $3, $4)`,
                 [
-                    coord.user_id,
+                    coord.id,  
                     submissao.id,
                     `Nova submissão: ${title}`,
                     `O aluno submeteu uma nova atividade para avaliação.`

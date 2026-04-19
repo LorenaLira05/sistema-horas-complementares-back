@@ -17,12 +17,14 @@ const rotasAdmin = require('./routes/admin');
 const rotasCoordenador = require('./routes/coordenador');
 const rotasAluno = require('./routes/aluno');
 const rotasDashboard = require('./routes/dashboard');
+const rotasUpload = require('./routes/upload');
 
 app.use('/auth', rotasAuth);
 app.use('/admin', rotasAdmin);
 app.use('/coordenador', rotasCoordenador);
 app.use('/aluno', rotasAluno);
 app.use('/dashboard', rotasDashboard);
+app.use('/upload', rotasUpload);
 
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, '..', '..', 'frontend','pages' ,'index.html'));

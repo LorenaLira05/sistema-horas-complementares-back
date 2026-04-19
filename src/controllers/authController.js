@@ -2,8 +2,6 @@ const pool = require('../config/database');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
-console.log('JWT_SECRET:', process.env.JWT_SECRET);
-
 exports.login = async (req, res) => {
      console.log('Entrou no login');
     const { email, senha } = req.body;
