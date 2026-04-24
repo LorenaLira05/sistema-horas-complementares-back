@@ -1,9 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const authController = require('../controllers/authController');
-const authMiddleware = require('../middleware/auth');
+const { authMiddleware, authMiddleware2FA } = require('../middleware/auth');
 
 router.post('/login', authController.login);
+router.post('/verificar-2fa', authMiddleware2FA, authController.verificar2FA);
 router.post('/setup', authController.setup);
 router.post('/trocar-senha', authMiddleware(['student', 'coordinator', 'super_admin']), authController.trocarSenha);
 

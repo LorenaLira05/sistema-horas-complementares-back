@@ -63,3 +63,26 @@ exports.emailResultadoSubmissao = async (emailAluno, nomeAluno, status, tituloAt
         console.error('Erro ao enviar e-mail:', err.message);
     }
 };
+
+// E-mail de código 2FA
+exports.emailCodigo2FA = async (emailUsuario, nomeUsuario, codigo) => {
+    try {
+        await transporter.sendMail({
+            from: `"Sistema SENAC" <${process.env.MAIL_USER}>`,
+            to: emailUsuario,
+            subject: 'Código de verificação de acesso',
+            html: `
+                <h2>Verificação de Acesso</h2>
+                <p>Olá, <strong>${nomeUsuario}</strong>!</p>
+                <p>Seu código de verificação é:</p>
+                <h1 style="letter-spacing: 8px; color: #1d4ed8">${codigo}</h1>
+                <p>Válido por <strong>10 minutos</strong>. Não compartilhe com ninguém.</p>
+                <br>
+                <p>Sistema de Gestão de Atividades Complementares — SENAC</p>
+            `
+        });
+        console.log(`Código 2FA enviado para ${emailUsuario}`);
+    } catch (err) {
+        console.error('Erro ao enviar código 2FA:', err.message);
+    }
+};

@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const coordenadorController = require('../controllers/coordenadorController');
-const authMiddleware = require('../middleware/auth');
+const { authMiddleware } = require('../middleware/auth');
 
 router.get('/teste', (req, res) => res.json({ msg: "Rota Coordenador funcionando!" }));
 router.post('/categoria', authMiddleware(['coordinator', 'super_admin']), coordenadorController.postCriarCategoria);
