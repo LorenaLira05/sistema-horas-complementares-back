@@ -54,7 +54,7 @@ exports.login = async (req, res) => {
             }
         }
 
-        // Dispositivo desconhecido — inicia fluxo 2FA
+        // Dispositivo desconhecido
         const codigo = crypto.randomInt(100000, 999999).toString();
         const codigoHash = await bcrypt.hash(codigo, 10);
         const expiraEm = new Date(Date.now() + 10 * 60 * 1000); // 10 min
@@ -119,7 +119,6 @@ exports.verificar2FA = async (req, res) => {
             return res.status(400).json({ erro: "Código inválido." });
         }
 
-        // Limpa o código após uso
         await pool.query(
             `UPDATE users 
              SET two_factor_code = NULL, two_factor_expires_at = NULL,
@@ -128,7 +127,6 @@ exports.verificar2FA = async (req, res) => {
             [userId]
         );
 
-        // Gera e salva token do dispositivo
         const deviceToken = crypto.randomBytes(32).toString('hex');
         await pool.query(
             `INSERT INTO trusted_devices (user_id, device_token) VALUES ($1, $2)`,
