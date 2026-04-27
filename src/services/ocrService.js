@@ -31,12 +31,12 @@ const processarImagem = async (caminhoArquivo) => {
 const processarPdf = async (caminhoArquivo) => {
     const tmpDir = path.join(__dirname, '../../uploads/tmp');
 
-    // 1️⃣ cria pasta antes de tudo
+    // cria pasta antes de tudo
     if (!fs.existsSync(tmpDir)) {
         fs.mkdirSync(tmpDir, { recursive: true });
     }
 
-    // 2️⃣ configura conversor
+    // configura conversor
     const convert = fromPath(caminhoArquivo, {
         density: 300,
         saveFilename: `ocr_${Date.now()}`,
@@ -44,17 +44,16 @@ const processarPdf = async (caminhoArquivo) => {
         format: 'png',
     });
 
-    // 3️⃣ converte primeira página
+    //converte primeira página
     const pagina = await convert(1);
 
-    // 🔎 DEBUG
     console.log("Imagem gerada:", pagina.path);
     console.log("Existe?", fs.existsSync(pagina.path));
 
-    // 4️⃣ processa imagem
+    // processa imagem
     const resultado = await processarImagem(pagina.path);
 
-    // 5️⃣ remove imagem temporária
+    // remove imagem temporária
     if (fs.existsSync(pagina.path)) {
         fs.unlinkSync(pagina.path);
     }
