@@ -1,6 +1,7 @@
 const pool = require('../config/database');
 const multer = require('multer');
 const path = require('path');
+const { executarOCR } = require('../services/ocrService');
 
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
@@ -30,9 +31,10 @@ const upload = multer({
 });
 
 // Mapeia mimetype para o enum file_type_enum do banco
-const getFileType = (mimetype) => {
-    if (mimetype === 'application/pdf') return 'pdf';
-    if (mimetype.startsWith('image/')) return 'image';
+const getFileType = (mimetype, originalname) => {
+    const ext = path.extname(originalname).toLowerCase();
+    if (ext === '.pdf') return 'pdf';
+    if (['.jpg', '.jpeg', '.png'].includes(ext)) return 'image';
     return 'other';
 };
 
@@ -58,18 +60,24 @@ exports.uploadCertificado = [
                 return res.status(404).json({ erro: 'Submissão não encontrada.' });
             }
 
+            const caminhoFisico = path.join(__dirname, '../../uploads', req.file.filename);
+
+            const resultadoOCR = await executarOCR(caminhoFisico, req.file.mimetype);
+
             const resultado = await pool.query(
                 `INSERT INTO submission_files
-                 (submission_id, original_filename, storage_path, file_type, mime_type, file_size_kb)
-                 VALUES ($1, $2, $3, $4::file_type_enum, $5, $6)
-                 RETURNING *`,
+                (submission_id, original_filename, storage_path, file_type, mime_type, file_size_kb, ocr_extracted_text, ocr_confidence)
+                VALUES ($1, $2, $3, $4::file_type_enum, $5, $6, $7, $8)
+                RETURNING *`,
                 [
                     submission_id,
                     req.file.originalname,
                     `/uploads/${req.file.filename}`,
                     getFileType(req.file.mimetype),
                     req.file.mimetype,
-                    Math.round(req.file.size / 1024)
+                    Math.round(req.file.size / 1024),
+                    resultadoOCR.texto,
+                    resultadoOCR.confianca
                 ]
             );
 
