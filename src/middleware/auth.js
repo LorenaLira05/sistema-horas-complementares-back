@@ -1,6 +1,5 @@
 const jwt = require('jsonwebtoken');
 
-// Middleware normal — rotas protegidas (já existia)
 const authMiddleware = (perfisPermitidos) => {
     return (req, res, next) => {
         const authHeader = req.headers['authorization'];
@@ -32,7 +31,7 @@ const authMiddleware = (perfisPermitidos) => {
     };
 };
 
-// Middleware exclusivo para a etapa de verificação 2FA (novo)
+// Middleware exclusivo para a etapa de verificação 2FA 
 const authMiddleware2FA = (req, res, next) => {
     const authHeader = req.headers['authorization'];
 
