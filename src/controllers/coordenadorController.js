@@ -21,6 +21,32 @@ exports.postCriarCategoria = async (req, res) => {
     }
 };
 
+exports.getListaCategorias = async (req, res) => {
+    try {
+        const resultado = await pool.query('SELECT * FROM categories WHERE is_active = true ORDER BY name');
+        res.status(200).json(resultado.rows);
+    } catch (err) {
+        res.status(500).json({ erro: err.message });
+    }
+};
+
+exports.getTodasRegras = async (req, res) => {
+    try {
+        const resultado = await pool.query(
+            `SELECT car.*, cat.name AS category_name, c.name AS course_name
+             FROM course_activity_rules car
+             JOIN categories cat ON cat.id = car.category_id
+             JOIN courses c ON c.id = car.course_id
+             JOIN course_coordinators cc ON cc.course_id = c.id
+             WHERE cc.user_id = $1 AND cc.is_active = true`,
+            [req.usuario.id]
+        );
+        res.status(200).json(resultado.rows);
+    } catch (err) {
+        res.status(500).json({ erro: err.message });
+    }
+};
+
 exports.postCriarRegra = async (req, res) => {
     const { course_id, category_id, min_hours, max_hours, is_required, notes } = req.body;
 
@@ -49,14 +75,17 @@ exports.postCriarRegra = async (req, res) => {
 
 exports.getRegrasPorCurso = async (req, res) => {
     const { course_id } = req.params;
+    const isSuperAdmin = req.usuario.perfis && req.usuario.perfis.includes('super_admin');
 
-    const acesso = await pool.query(
-        `SELECT id FROM course_coordinators 
-         WHERE user_id = $1 AND course_id = $2 AND is_active = true`,
-        [req.usuario.id, course_id]
-    );
-    if (acesso.rows.length === 0) {
-        return res.status(403).json({ erro: "Você não tem acesso a este curso." });
+    if (!isSuperAdmin) {
+        const acesso = await pool.query(
+            `SELECT id FROM course_coordinators 
+             WHERE user_id = $1 AND course_id = $2 AND is_active = true`,
+            [req.usuario.id, course_id]
+        );
+        if (acesso.rows.length === 0) {
+            return res.status(403).json({ erro: "Você não tem acesso a este curso." });
+        }
     }
 
     try {
@@ -122,16 +151,19 @@ exports.deleteRegra = async (req, res) => {
 
 exports.postCadastrarAluno = async (req, res) => {
     const { full_name, email, cpf, phone, course_id, ra, status_matricula } = req.body;
+    const isSuperAdmin = req.usuario.perfis && req.usuario.perfis.includes('super_admin');
 
-    const acesso = await pool.query(
-        `SELECT id FROM course_coordinators 
-         WHERE user_id = $1 AND course_id = $2 AND is_active = true`,
-        [req.usuario.id, course_id]
-    );
-    if (acesso.rows.length === 0) {
-        return res.status(403).json({ erro: "Você não tem acesso a este curso." });
+    if (!isSuperAdmin) {
+        const acesso = await pool.query(
+            `SELECT id FROM course_coordinators 
+             WHERE user_id = $1 AND course_id = $2 AND is_active = true`,
+            [req.usuario.id, course_id]
+        );
+        if (acesso.rows.length === 0) {
+            return res.status(403).json({ erro: "Você não tem acesso a este curso." });
+        }
     }
-    
+
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -175,14 +207,17 @@ exports.postCadastrarAluno = async (req, res) => {
 
 exports.getAlunosDoCurso = async (req, res) => {
     const { course_id } = req.params;
+    const isSuperAdmin = req.usuario.perfis && req.usuario.perfis.includes('super_admin');
 
-    const acesso = await pool.query(
-        `SELECT id FROM course_coordinators 
-         WHERE user_id = $1 AND course_id = $2 AND is_active = true`,
-        [req.usuario.id, course_id]
-    );
-    if (acesso.rows.length === 0) {
-        return res.status(403).json({ erro: "Você não tem acesso a este curso." });
+    if (!isSuperAdmin) {
+        const acesso = await pool.query(
+            `SELECT id FROM course_coordinators 
+             WHERE user_id = $1 AND course_id = $2 AND is_active = true`,
+            [req.usuario.id, course_id]
+        );
+        if (acesso.rows.length === 0) {
+            return res.status(403).json({ erro: "Você não tem acesso a este curso." });
+        }
     }
 
     try {
@@ -207,7 +242,9 @@ exports.getAlunosDoCurso = async (req, res) => {
 
 exports.putAtualizarAluno = async (req, res) => {
     const { id } = req.params;
-    const { full_name, email, phone, ra, status_matricula, course_id } = req.body;
+    const { 
+        full_name, email, phone, ra, status_matricula, course_id, cpf 
+    } = req.body;
 
     const client = await pool.connect();
     try {
@@ -219,22 +256,29 @@ exports.putAtualizarAluno = async (req, res) => {
             return res.status(404).json({ erro: "Aluno não encontrado." });
         }
 
+        // 1. Atualizar Usuário
         await client.query(
-            `UPDATE users SET full_name = $1, email = $2, phone = $3, updated_at = NOW()
-             WHERE id = $4`,
-            [full_name, email, phone, id]
+            `UPDATE users SET full_name = $1, email = $2, phone = $3, cpf = $4, updated_at = NOW()
+             WHERE id = $5`,
+            [full_name, email, phone, cpf, id]
         );
 
+        // 2. Atualizar Perfil (RA)
         await client.query(
             `INSERT INTO student_profiles (user_id, ra, updated_at)
              VALUES ($1, $2, NOW())
-             ON CONFLICT (user_id) DO UPDATE SET ra = $2, updated_at = NOW()`,
+             ON CONFLICT (user_id) DO UPDATE SET 
+                ra = EXCLUDED.ra, 
+                updated_at = NOW()`,
             [id, ra]
         );
 
-        if (status_matricula && course_id) {
+        // 3. Atualizar Vínculo com Curso (Status)
+        if (course_id) {
             await client.query(
-                `UPDATE user_courses SET status_matricula = $1
+                `UPDATE user_courses SET 
+                    status_matricula = COALESCE($1, status_matricula),
+                    updated_at = NOW()
                  WHERE user_id = $2 AND course_id = $3`,
                 [status_matricula, id, course_id]
             );
@@ -248,6 +292,82 @@ exports.putAtualizarAluno = async (req, res) => {
         res.status(500).json({ erro: err.message });
     } finally {
         client.release();
+    }
+};
+
+exports.getAlunoById = async (req, res) => {
+    const { id } = req.params;
+    try {
+        const query = `
+            SELECT u.id, u.full_name, u.email, u.phone, u.cpf,
+                   sp.ra,
+                   uc.course_id, uc.status_matricula, uc.enrollment_date,
+                   c.name as course_name
+            FROM users u
+            LEFT JOIN student_profiles sp ON u.id = sp.user_id
+            LEFT JOIN user_courses uc ON u.id = uc.user_id
+            LEFT JOIN courses c ON uc.course_id = c.id
+            WHERE u.id = $1
+        `;
+        const result = await pool.query(query, [id]);
+        if (result.rows.length === 0) {
+            return res.status(404).json({ erro: "Aluno não encontrado." });
+        }
+        res.status(200).json(result.rows[0]);
+    } catch (err) {
+        res.status(500).json({ erro: err.message });
+    }
+};
+
+exports.getMeusCursos = async (req, res) => {
+    try {
+        const isSuperAdmin = req.usuario.perfis && req.usuario.perfis.includes('super_admin');
+        
+        let query;
+        let params = [];
+
+        if (isSuperAdmin) {
+            query = `SELECT id, name, code FROM courses WHERE is_active = true ORDER BY name`;
+        } else {
+            query = `SELECT c.id, c.name, c.code 
+                     FROM courses c
+                     JOIN course_coordinators cc ON cc.course_id = c.id
+                     WHERE cc.user_id = $1 AND cc.is_active = true AND c.is_active = true
+                     ORDER BY c.name`;
+            params = [req.usuario.id];
+        }
+
+        const resultado = await pool.query(query, params);
+        res.status(200).json(resultado.rows);
+    } catch (err) {
+        res.status(500).json({ erro: err.message });
+    }
+};
+
+exports.patchInativarAluno = async (req, res) => {
+    const { id } = req.params;
+    try {
+        await pool.query(`UPDATE users SET status = 'inativo', updated_at = NOW() WHERE id = $1`, [id]);
+        await pool.query(`UPDATE user_courses SET is_active = false WHERE user_id = $1`, [id]);
+        await registrarLog(req.usuario.id, 'INATIVAR_ALUNO', 'users', id, {});
+        res.status(200).json({ mensagem: "Aluno inativado com sucesso!" });
+    } catch (err) {
+        res.status(500).json({ erro: err.message });
+    }
+};
+
+exports.patchStatusAluno = async (req, res) => {
+    const { id } = req.params;
+    const { status_matricula } = req.body;
+    try {
+        await pool.query(
+            `UPDATE user_courses SET status_matricula = $1, updated_at = NOW() WHERE user_id = $2`,
+            [status_matricula, id]
+        );
+        await registrarLog(req.usuario.id, 'ALTERAR_STATUS_ALUNO', 'user_courses', id, { status_matricula });
+        res.status(200).json({ mensagem: "Status atualizado!" });
+    } catch (err) {
+        res.status(500).json({ erro: err.message });
     }
 };
 
@@ -268,6 +388,85 @@ exports.deleteAluno = async (req, res) => {
         res.status(500).json({ erro: err.message });
     }
 };
+exports.getSubmissoesGeral = async (req, res) => {
+    const user_id = parseInt(req.usuario.id);
+    const { status, pagina = 1 } = req.query;
+    const itensPorPagina = 10;
+    const offset = (pagina - 1) * itensPorPagina;
+
+    try {
+        const isSuperAdmin = req.usuario.perfis && req.usuario.perfis.includes('super_admin');
+        let course_ids = [];
+
+        if (isSuperAdmin) {
+            const todos = await pool.query(`SELECT id FROM courses WHERE is_active = true`);
+            course_ids = todos.rows.map(r => parseInt(r.id));
+        } else {
+            const cursos = await pool.query(
+                `SELECT course_id FROM course_coordinators WHERE user_id = $1 AND is_active = true`,
+                [user_id]
+            );
+            course_ids = cursos.rows.map(r => parseInt(r.course_id));
+        }
+
+        if (course_ids.length === 0) {
+            return res.status(200).json({ submissoes: [], contadores: { pendentes: 0, aprovadas: 0, reprovadas: 0, total: 0 }, total_paginas: 0 });
+        }
+
+        let params = [course_ids];
+        let filtroStatus = '';
+        if (status && status === 'PENDENTE') {
+            filtroStatus = `AND s.status NOT IN ('approved', 'rejected')`;
+            params.push(itensPorPagina, offset);
+        } else if (status && status !== 'TODAS') {
+            filtroStatus = `AND s.status = $2::submission_status_enum`;
+            params.push(status, itensPorPagina, offset);
+        } else {
+            params.push(itensPorPagina, offset);
+        }
+
+        const resultado = await pool.query(
+            `SELECT
+                s.*, u.full_name AS student_name, u.email AS student_email,
+                sp.ra AS ra,
+                c.name AS course_name, cat.name AS category_name
+             FROM submissions s
+             JOIN user_courses uc ON uc.id = s.user_course_id
+             JOIN users u ON u.id = uc.user_id
+             LEFT JOIN student_profiles sp ON sp.user_id = u.id
+             JOIN courses c ON c.id = uc.course_id
+             JOIN categories cat ON cat.id = s.category_id
+             WHERE uc.course_id = ANY($1)
+             ${filtroStatus}
+             ORDER BY s.submitted_at DESC
+             LIMIT $${params.length - 1} OFFSET $${params.length}`,
+            params
+        );
+
+        const contadores = await pool.query(
+            `SELECT
+                COUNT(*) FILTER (WHERE s.status NOT IN ('approved', 'rejected')) AS pendentes,
+                COUNT(*) FILTER (WHERE s.status = 'approved') AS aprovadas,
+                COUNT(*) FILTER (WHERE s.status = 'rejected') AS reprovadas,
+                COUNT(*) AS total,
+                COUNT(DISTINCT uc.course_id) AS total_cursos
+             FROM submissions s
+             JOIN user_courses uc ON uc.id = s.user_course_id
+             WHERE uc.course_id = ANY($1)`,
+            [course_ids]
+        );
+
+        res.status(200).json({
+            submissoes: resultado.rows,
+            contadores: contadores.rows[0],
+            pagina: parseInt(pagina),
+            total_paginas: Math.ceil(contadores.rows[0].total / itensPorPagina)
+        });
+    } catch (err) {
+        console.error('Erro em getSubmissoesGeral:', err);
+        res.status(500).json({ erro: err.message });
+    }
+};
 
 
 exports.getSubmissoes = async (req, res) => {
@@ -275,21 +474,27 @@ exports.getSubmissoes = async (req, res) => {
     const { status, pagina = 1 } = req.query;
     const itensPorPagina = 10;
     const offset = (pagina - 1) * itensPorPagina;
+    const isSuperAdmin = req.usuario.perfis && req.usuario.perfis.includes('super_admin');
 
-    const acesso = await pool.query(
-        `SELECT id FROM course_coordinators 
-         WHERE user_id = $1 AND course_id = $2 AND is_active = true`,
-        [req.usuario.id, course_id]
-    );
-    if (acesso.rows.length === 0) {
-        return res.status(403).json({ erro: "Você não tem acesso a este curso." });
+    if (!isSuperAdmin) {
+        const acesso = await pool.query(
+            `SELECT id FROM course_coordinators 
+             WHERE user_id = $1 AND course_id = $2 AND is_active = true`,
+            [req.usuario.id, course_id]
+        );
+        if (acesso.rows.length === 0) {
+            return res.status(403).json({ erro: "Você não tem acesso a este curso." });
+        }
     }
 
     try {
         let params = [course_id];
         let filtroStatus = '';
 
-        if (status && status !== 'TODAS') {
+        if (status && status === 'PENDENTE') {
+            filtroStatus = `AND s.status NOT IN ('approved', 'rejected')`;
+            params.push(itensPorPagina, offset);
+        } else if (status && status !== 'TODAS') {
             filtroStatus = `AND s.status = $2::submission_status_enum`;
             params.push(status, itensPorPagina, offset);
         } else {
@@ -317,7 +522,7 @@ exports.getSubmissoes = async (req, res) => {
 
         const contadores = await pool.query(
             `SELECT
-                COUNT(*) FILTER (WHERE s.status = 'submitted') AS pendentes,
+                COUNT(*) FILTER (WHERE s.status NOT IN ('approved', 'rejected')) AS pendentes,
                 COUNT(*) FILTER (WHERE s.status = 'approved') AS aprovadas,
                 COUNT(*) FILTER (WHERE s.status = 'rejected') AS reprovadas,
                 COUNT(*) AS total
@@ -435,8 +640,8 @@ exports.patchValidarSubmissao = async (req, res) => {
                 comment
             );
 
-         await pool.query(
-            `INSERT INTO notifications (user_id, submission_id, type, title, message)
+            await pool.query(
+                `INSERT INTO notifications (user_id, submission_id, type, title, message)
             VALUES (
                 (SELECT uc.user_id FROM submissions s JOIN user_courses uc ON uc.id = s.user_course_id WHERE s.id = $2),
                 $2,
@@ -444,14 +649,14 @@ exports.patchValidarSubmissao = async (req, res) => {
                 $4,
                 $5
             )`,
-            [
-                submissao.rows[0].user_course_id,
-                submissao.rows[0].id,
-                `submission_${status_final}`,
-                `Sua submissão foi ${status_final === 'approved' ? 'aprovada' : status_final === 'rejected' ? 'reprovada' : 'devolvida para ajuste'}`,
-                comment || ''
-            ]
-        );
+                [
+                    submissao.rows[0].user_course_id,
+                    submissao.rows[0].id,
+                    `submission_${status_final}`,
+                    `Sua submissão foi ${status_final === 'approved' ? 'aprovada' : status_final === 'rejected' ? 'reprovada' : 'devolvida para ajuste'}`,
+                    comment || ''
+                ]
+            );
         }
 
         await registrarLog(req.usuario.id, 'VALIDAR_SUBMISSAO', 'submissions', id, { status_final, approved_hours });
@@ -461,5 +666,186 @@ exports.patchValidarSubmissao = async (req, res) => {
         res.status(500).json({ erro: err.message });
     } finally {
         client.release();
+    }
+};
+
+exports.getResumoGeral = async (req, res) => {
+    const user_id = parseInt(req.usuario.id);
+    const isSuperAdmin = req.usuario.perfis && req.usuario.perfis.includes('super_admin');
+
+    try {
+        let course_ids = [];
+
+        // 1. Cursos do usuário
+        if (isSuperAdmin) {
+            const todos = await pool.query(
+                `SELECT id FROM courses WHERE is_active = true`
+            );
+            course_ids = todos.rows.map(r => parseInt(r.id));
+        } else {
+            const cursos = await pool.query(
+                `SELECT course_id 
+                 FROM course_coordinators 
+                 WHERE user_id = $1 AND is_active = true`,
+                [user_id]
+            );
+            course_ids = cursos.rows.map(r => parseInt(r.course_id));
+        }
+
+        if (course_ids.length === 0) {
+            return res.status(200).json({
+                alunos: [],
+                categorias: [],
+                contadores: {}
+            });
+        }
+
+        // 2. RESUMO POR ALUNO (geral)
+        const alunos = await pool.query(
+            `SELECT
+                u.id,
+                u.full_name,
+                u.email,
+                sp.ra,
+                c.id AS course_id,
+                c.name AS course_name,
+                c.minimum_required_hours AS total_obrigatorio,
+
+                COALESCE(
+                    SUM(s.approved_hours) FILTER (WHERE s.status = 'approved'),
+                    0
+                ) AS total_integralizado,
+
+                COUNT(s.id) AS total_submissoes
+
+             FROM users u
+             JOIN user_courses uc ON uc.user_id = u.id
+             JOIN courses c ON c.id = uc.course_id
+             LEFT JOIN student_profiles sp ON sp.user_id = u.id
+             LEFT JOIN submissions s ON s.user_course_id = uc.id
+             JOIN user_roles ur ON ur.user_id = u.id
+             JOIN roles r ON r.id = ur.role_id
+
+             WHERE uc.course_id = ANY($1)
+               AND r.name = 'student'
+               AND uc.is_active = true
+
+             GROUP BY 
+                u.id, u.full_name, u.email,
+                sp.ra,
+                c.id, c.name, c.minimum_required_hours
+
+             ORDER BY u.full_name`,
+            [course_ids]
+        );
+
+        // 3. 🔥 RESUMO POR CATEGORIA (NÚCLEO DO QUE VOCÊ QUER)
+        const categorias = await pool.query(
+            `SELECT
+                u.id AS user_id,
+                u.full_name,
+                c.id AS course_id,
+                c.name AS course_name,
+
+                cat.id AS category_id,
+                cat.name AS category_name,
+
+                car.min_hours,
+                car.max_hours,
+
+                COALESCE(
+                    SUM(s.approved_hours) FILTER (WHERE s.status = 'approved'),
+                    0
+                ) AS horas_aprovadas,
+
+                COALESCE(
+                    SUM(s.requested_hours) FILTER (WHERE s.status NOT IN ('approved','rejected')),
+                    0
+                ) AS horas_em_analise,
+
+                (
+                    car.max_hours - COALESCE(
+                        SUM(s.approved_hours) FILTER (WHERE s.status = 'approved'),
+                        0
+                    )
+                ) AS horas_restantes
+
+             FROM users u
+
+             JOIN user_courses uc 
+                ON uc.user_id = u.id
+
+             JOIN courses c 
+                ON c.id = uc.course_id
+
+             JOIN course_activity_rules car
+                ON car.course_id = uc.course_id
+
+             JOIN categories cat
+                ON cat.id = car.category_id
+
+             LEFT JOIN submissions s
+                ON s.user_course_id = uc.id
+               AND s.category_id = cat.id
+
+             JOIN user_roles ur 
+                ON ur.user_id = u.id
+
+             JOIN roles r 
+                ON r.id = ur.role_id
+
+             WHERE uc.course_id = ANY($1)
+               AND r.name = 'student'
+               AND uc.is_active = true
+
+             GROUP BY 
+                u.id, u.full_name,
+                c.id, c.name,
+                cat.id, cat.name,
+                car.min_hours,
+                car.max_hours
+
+             ORDER BY u.full_name, cat.name`,
+            [course_ids]
+        );
+
+        // 4. CONTADORES GERAIS
+        const contadores = await pool.query(
+            `SELECT
+                COUNT(DISTINCT u.id) AS total_alunos,
+
+                COUNT(s.id) FILTER (
+                    WHERE s.status NOT IN ('approved','rejected')
+                ) AS pendentes,
+
+                COUNT(s.id) FILTER (
+                    WHERE s.status = 'approved'
+                ) AS aprovadas
+
+             FROM users u
+             JOIN user_courses uc ON uc.user_id = u.id
+             JOIN user_roles ur ON ur.user_id = u.id
+             JOIN roles r ON r.id = ur.role_id
+             LEFT JOIN submissions s ON s.user_course_id = uc.id
+
+             WHERE uc.course_id = ANY($1)
+               AND r.name = 'student'
+               AND uc.is_active = true`,
+            [course_ids]
+        );
+
+        return res.status(200).json({
+            alunos: alunos.rows,
+            categorias: categorias.rows,
+            contadores: contadores.rows[0]
+        });
+
+    } catch (err) {
+        console.error("ERRO RESUMO POR CATEGORIA:", err);
+        console.error(err.stack);
+
+        return res.status(500).json({
+            erro: err.message
+        });
     }
 };

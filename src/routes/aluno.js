@@ -9,7 +9,9 @@ router.get('/teste', (req, res) => res.json({ msg: "Rota Aluno funcionando!" }))
 router.post('/submissao', authMiddleware(['student']), alunoController.postSubmeterAtividade);
 router.put('/submissao/:id', authMiddleware(['student']), alunoController.putEditarSubmissao);
 router.delete('/submissao/:id', authMiddleware(['student']), alunoController.deleteSubmissao);
-router.get('/submissoes', authMiddleware(['student']), alunoController.getMinhasSubmissoes);
+router.get('/submissoes', authMiddleware(['student', 'coordinator']), alunoController.getMinhasSubmissoes);
+router.get('/resumo-horas', authMiddleware(['student', 'coordinator']), alunoController.getResumoHoras);
+router.get('/meus-dados', authMiddleware(['student', 'coordinator']), alunoController.getMeusDados);
 
 // Upload separado — permite anexar/atualizar arquivo independente da submissão
 router.post('/submissao/:submission_id/arquivo', authMiddleware(['student']), uploadController.uploadCertificado);

@@ -239,3 +239,117 @@ exports.getMinhasSubmissoes = async (req, res) => {
         res.status(500).json({ erro: err.message });
     }
 };
+
+exports.getResumoHoras = async (req, res) => {
+    const user_id = req.usuario.id;
+    try {
+        // 1. Pegar o curso do aluno
+        const userCourse = await pool.query(
+            `SELECT uc.course_id, c.name as course_name, c.minimum_required_hours
+             FROM user_courses uc
+             JOIN courses c ON c.id = uc.course_id
+             WHERE uc.user_id = $1 AND uc.is_active = true`,
+            [user_id]
+        );
+
+        if (userCourse.rows.length === 0) {
+            return res.status(404).json({ erro: "Aluno não vinculado a nenhum curso ativo." });
+        }
+
+        const { course_id, minimum_required_hours } = userCourse.rows[0];
+
+        // 2. Pegar as regras (limites por categoria)
+        const regras = await pool.query(
+            `SELECT car.*, cat.name as category_name
+             FROM course_activity_rules car
+             JOIN categories cat ON cat.id = car.category_id
+             WHERE car.course_id = $1`,
+            [course_id]
+        );
+
+        // 3. Pegar as horas aprovadas por categoria
+        const aprovadas = await pool.query(
+            `SELECT s.category_id, SUM(s.approved_hours) as total_aprovado
+             FROM submissions s
+             JOIN user_courses uc ON uc.id = s.user_course_id
+             WHERE uc.user_id = $1 AND uc.course_id = $2 AND s.status = 'approved'
+             GROUP BY s.category_id`,
+            [user_id, course_id]
+        );
+
+        // 4. Pegar as horas em análise (pendentes)
+        const emAnalise = await pool.query(
+            `SELECT SUM(s.requested_hours) as total_pendente
+             FROM submissions s
+             JOIN user_courses uc ON uc.id = s.user_course_id
+             WHERE uc.user_id = $1 AND uc.course_id = $2 AND s.status NOT IN ('approved', 'rejected')`,
+            [user_id, course_id]
+        );
+
+        // Mapear aprovadas para fácil acesso
+        const aprovadasMap = {};
+        aprovadas.rows.forEach(r => {
+            aprovadasMap[r.category_id] = parseFloat(r.total_aprovado) || 0;
+        });
+
+        // Montar o resumo por categoria
+        const limites = regras.rows.map(regra => {
+            const horasAprovadas = aprovadasMap[regra.category_id] || 0;
+            return {
+                categoria: regra.category_name,
+                min_horas: regra.min_hours,
+                max_horas: regra.max_hours,
+                horas_aprovadas: horasAprovadas,
+                percentual: Math.min(100, (horasAprovadas / regra.max_hours) * 100)
+            };
+        });
+
+        const totalIntegralizado = Object.values(aprovadasMap).reduce((a, b) => a + b, 0);
+
+        res.status(200).json({
+            curso: userCourse.rows[0].course_name,
+            total_obrigatorio: minimum_required_hours,
+            total_integralizado: totalIntegralizado,
+            total_em_analise: emAnalise.rows[0].total_pendente || 0,
+            percentual_total: Math.min(100, (totalIntegralizado / minimum_required_hours) * 100),
+            limites: limites
+        });
+
+    } catch (err) {
+        res.status(500).json({ erro: err.message });
+    }
+};
+
+exports.getMeusDados = async (req, res) => {
+    const user_id = req.usuario.id;
+    try {
+        const aluno = await pool.query(
+            `SELECT u.full_name as nome, u.email, c.name as curso_nome
+             FROM users u
+             JOIN user_courses uc ON uc.user_id = u.id
+             JOIN courses c ON c.id = uc.course_id
+             WHERE u.id = $1 AND uc.is_active = true`,
+            [user_id]
+        );
+
+        const stats = await pool.query(
+            `SELECT 
+                COUNT(*) as total_submissoes,
+                COUNT(*) FILTER (WHERE status NOT IN ('approved', 'rejected')) as pendentes,
+                SUM(approved_hours) as horas_aprovadas
+             FROM submissions s
+             JOIN user_courses uc ON uc.id = s.user_course_id
+             WHERE uc.user_id = $1`,
+            [user_id]
+        );
+
+        res.status(200).json({
+            aluno: aluno.rows[0],
+            total_submissoes: parseInt(stats.rows[0].total_submissoes) || 0,
+            pendentes: parseInt(stats.rows[0].pendentes) || 0,
+            horas_aprovadas: parseFloat(stats.rows[0].horas_aprovadas) || 0
+        });
+    } catch (err) {
+        res.status(500).json({ erro: err.message });
+    }
+};
